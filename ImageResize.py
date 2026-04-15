@@ -41,7 +41,64 @@ from textual.worker import Worker, get_current_worker
 # Settings
 # ──────────────────────────────────────────────
 
-# SettingsManager class goes here
+_SETTINGS_DIR = Path.home() / ".imageresize"
+_SETTINGS_FILE = _SETTINGS_DIR / "settings.json"
+
+_DEFAULT_SETTINGS: dict = {
+    "last_used": {
+        "source_dir": "",
+        "target_dir": "",
+        "resolution_mode": "max",
+        "resolution_params": {"size": 1280, "by": "either"},
+        "quality": 85,
+    },
+    "presets": {},
+}
+
+
+class SettingsManager:
+    def __init__(self, settings_path: Path = _SETTINGS_FILE) -> None:
+        self.settings_path = settings_path
+        self._data: dict = {}
+
+    def load(self) -> dict:
+        try:
+            if self.settings_path.exists():
+                with open(self.settings_path) as f:
+                    self._data = json.load(f)
+            else:
+                import copy
+                self._data = copy.deepcopy(_DEFAULT_SETTINGS)
+        except (json.JSONDecodeError, OSError):
+            import copy
+            self._data = copy.deepcopy(_DEFAULT_SETTINGS)
+        return self._data
+
+    def save(self) -> None:
+        self.settings_path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = self.settings_path.with_suffix(".tmp")
+        with open(tmp, "w") as f:
+            json.dump(self._data, f, indent=2)
+        tmp.replace(self.settings_path)
+
+    def get_last_used(self) -> dict:
+        import copy
+        return copy.deepcopy(self._data.get("last_used", _DEFAULT_SETTINGS["last_used"]))
+
+    def set_last_used(self, settings: dict) -> None:
+        self._data["last_used"] = settings
+        self.save()
+
+    def get_presets(self) -> dict:
+        return self._data.get("presets", {})
+
+    def save_preset(self, name: str, settings: dict) -> None:
+        self._data.setdefault("presets", {})[name] = settings
+        self.save()
+
+    def delete_preset(self, name: str) -> None:
+        self._data.get("presets", {}).pop(name, None)
+        self.save()
 
 # ──────────────────────────────────────────────
 # Processing engine
