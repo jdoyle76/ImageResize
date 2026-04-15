@@ -568,13 +568,17 @@ class SetupScreen(Screen):
                 yield Label("Preset: ")
                 yield Input(placeholder="Load a preset first", id="preset-display", disabled=True)
 
-            # ── Quality (placeholder — Task 9) ───────
+            # ── Quality ──────────────────────────────
             yield Label("Quality", classes="section-title")
-            yield Label("(quality slider goes here)", id="quality-placeholder")
+            with Horizontal(id="quality-row"):
+                yield Label("Quality: 85%  [JPEG→80]", id="quality-label")
+                yield Input(value="85", placeholder="0-100", id="quality-input", classes="num-input")
 
-            # ── Presets (placeholder — Task 9) ───────
+            # ── Presets ───────────────────────────────
             yield Label("Presets", classes="section-title")
-            yield Label("(preset controls go here)", id="preset-placeholder")
+            with Horizontal(id="preset-row"):
+                yield Button("Save as Preset", id="btn-save-preset")
+                yield Button("Load Preset", id="btn-load-preset")
 
         yield Footer()
 
@@ -589,6 +593,16 @@ class SetupScreen(Screen):
                 DirectoryModal(self._target_dir),
                 callback=self._on_target_selected,
             )
+        elif event.button.id == "btn-save-preset":
+            self.app.push_screen(PresetNameModal(), callback=self._on_preset_name)
+        elif event.button.id == "btn-load-preset":
+            names = list(self._settings.get_presets().keys())
+            if names:
+                self.app.push_screen(
+                    PresetSelectModal(names), callback=self._on_preset_loaded
+                )
+            else:
+                self.notify("No saved presets yet.", title="Load Preset")
 
     def _on_source_selected(self, path: Optional[Path]) -> None:
         if path is not None:
@@ -599,6 +613,18 @@ class SetupScreen(Screen):
         if path is not None:
             self._target_dir = str(path)
             self.query_one("#target-input", Input).value = self._target_dir
+
+    def on_input_changed(self, event: Input.Changed) -> None:
+        if event.input.id != "quality-input":
+            return
+        try:
+            pct = max(0, min(100, int(event.value)))
+        except (ValueError, TypeError):
+            pct = 85
+        jpeg_val = max(1, min(95, round(pct * 95 / 100)))
+        self.query_one("#quality-label", Label).update(
+            f"Quality: {pct}%  [JPEG→{jpeg_val}]"
+        )
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
         if event.input.id == "source-input":
@@ -643,6 +669,53 @@ class SetupScreen(Screen):
             return float(self.query_one(widget_id, Input).value)
         except (ValueError, TypeError):
             return default
+
+    def on_mount(self) -> None:
+        last = self._last
+        quality = last.get("quality", 85)
+        self.query_one("#quality-input", Input).value = str(quality)
+
+        mode = last.get("resolution_mode", "max")
+        mode_btn_id = {
+            "fixed": "mode-fixed",
+            "max": "mode-max",
+            "percentage": "mode-pct",
+            "preset": "mode-preset",
+        }.get(mode, "mode-max")
+        self.query_one(f"#{mode_btn_id}", RadioButton).value = True
+
+        params = last.get("resolution_params", {})
+        if mode == "fixed":
+            self.query_one("#fixed-width", Input).value = str(params.get("width", 1920))
+            self.query_one("#fixed-height", Input).value = str(params.get("height", 1080))
+        elif mode == "max":
+            self.query_one("#max-size", Input).value = str(params.get("size", 1280))
+        elif mode == "percentage":
+            self.query_one("#pct-value", Input).value = str(params.get("percent", 100))
+
+    def _on_preset_name(self, name: Optional[str]) -> None:
+        if not name:
+            return
+        quality = self._safe_int("#quality-input", 85)
+        settings = {
+            "resolution_mode": self.get_resolution_params().mode,
+            "resolution_params": self.get_resolution_params().to_dict(),
+            "quality": quality,
+        }
+        self._settings.save_preset(name, settings)
+        self.notify(f"Preset '{name}' saved.", title="Preset Saved")
+
+    def _on_preset_loaded(self, name: Optional[str]) -> None:
+        if not name:
+            return
+        preset = self._settings.get_presets().get(name, {})
+        quality = preset.get("quality", 85)
+        self.query_one("#quality-input", Input).value = str(quality)
+        self._preset_params = preset.get("resolution_params", {})
+        # Switch radio to "Named Preset" mode
+        self.query_one("#mode-preset", RadioButton).value = True
+        self.query_one("#preset-display", Input).value = name
+        self.notify(f"Loaded preset '{name}'.", title="Preset Loaded")
 
     def get_resolution_params(self) -> ResolutionParams:
         mode_radio = self.query_one("#resolution-mode", RadioSet)
