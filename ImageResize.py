@@ -104,7 +104,57 @@ class SettingsManager:
 # Processing engine
 # ──────────────────────────────────────────────
 
-# ResolutionParams, ProcessResult, ImageProcessor go here
+@dataclass
+class ResolutionParams:
+    mode: str  # "fixed" | "max" | "percentage"
+    # fixed mode
+    width: Optional[int] = None
+    height: Optional[int] = None
+    fit: str = "letterbox"  # "stretch" | "letterbox" | "crop"
+    # max mode
+    size: Optional[int] = None
+    by: str = "either"  # "width" | "height" | "either"
+    # percentage mode
+    percent: Optional[float] = None
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "ResolutionParams":
+        return cls(**{k: v for k, v in d.items() if k in cls.__dataclass_fields__})
+
+    def to_dict(self) -> dict:
+        return {k: v for k, v in self.__dict__.items() if v is not None or k == "mode"}
+
+
+@dataclass
+class ProcessResult:
+    processed: int = 0
+    skipped: int = 0
+    renamed: int = 0
+    failed: int = 0
+    errors: list = field(default_factory=list)
+    cancelled: bool = False
+
+
+class ImageProcessor:
+    def __init__(self) -> None:
+        self._cancel_event = threading.Event()
+
+    def cancel(self) -> None:
+        self._cancel_event.set()
+
+    def is_cancelled(self) -> bool:
+        return self._cancel_event.is_set()
+
+    def map_quality(self, quality_pct: int, fmt: str) -> dict:
+        """Map 0–100% quality to format-native save kwargs."""
+        upper = fmt.upper()
+        if upper in ("JPEG", "JPG"):
+            return {"quality": max(1, min(95, round(quality_pct * 95 / 100)))}
+        if upper == "PNG":
+            return {"compress_level": round((100 - quality_pct) * 9 / 100)}
+        if upper == "WEBP":
+            return {"quality": max(1, min(100, quality_pct))}
+        return {}
 
 # ──────────────────────────────────────────────
 # TUI — Modals
