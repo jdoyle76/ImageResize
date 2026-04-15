@@ -33,7 +33,6 @@ from textual.widgets import (
     ProgressBar,
     RadioButton,
     RadioSet,
-    Slider,
     Static,
 )
 from textual.worker import Worker, get_current_worker
