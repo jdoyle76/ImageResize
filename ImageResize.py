@@ -19,7 +19,7 @@ from typing import Callable, Optional
 from PIL import Image, UnidentifiedImageError
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.containers import Container, Horizontal, Vertical, ScrollableContainer
+from textual.containers import Container, Horizontal, ScrollableContainer
 from textual.screen import ModalScreen, Screen
 from textual.widgets import (
     Button,
@@ -38,7 +38,7 @@ from textual.widgets import (
 )
 from textual.css.query import NoMatches
 from textual.message import Message
-from textual.worker import Worker, get_current_worker
+from textual.worker import get_current_worker
 
 APP_CSS = """
 Screen {
@@ -370,16 +370,16 @@ class ImageProcessor:
                     img.load()
                     out_img = self.apply_resolution(img, resolution_params)
 
-                    out_path = self._get_output_path(source_file, source_dir, target_dir)
-                    out_path.parent.mkdir(parents=True, exist_ok=True)
+                out_path = self._get_output_path(source_file, source_dir, target_dir)
+                out_path.parent.mkdir(parents=True, exist_ok=True)
 
-                    if out_path.exists():
-                        out_path = self._resolve_collision(out_path)
-                        result.renamed += 1
+                if out_path.exists():
+                    out_path = self._resolve_collision(out_path)
+                    result.renamed += 1
 
-                    quality_kwargs = self.map_quality(quality, fmt)
-                    out_img.save(out_path, format=fmt, **quality_kwargs)
-                    result.processed += 1
+                quality_kwargs = self.map_quality(quality, fmt)
+                out_img.save(out_path, format=fmt, **quality_kwargs)
+                result.processed += 1
 
             except UnidentifiedImageError:
                 result.skipped += 1
@@ -726,7 +726,11 @@ class SetupScreen(Screen):
             self.notify("Please select a target directory.", title="Error", severity="error")
             return
 
-        quality = self._safe_int("#quality-input", 85)
+        if Path(source).resolve() == Path(target).resolve():
+            self.notify("Source and target must be different directories.", title="Error", severity="error")
+            return
+
+        quality = max(0, min(100, self._safe_int("#quality-input", 85)))
         params = self.get_resolution_params()
 
         # Save last-used
