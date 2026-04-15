@@ -409,7 +409,7 @@ class DirectoryModal(ModalScreen):
             yield Label("Select a directory (Enter to confirm, Esc to cancel)")
             yield DirectoryTree(str(self._start), id="dir-tree")
             yield Horizontal(
-                Button("Select", variant="primary", id="btn-select"),
+                Button("Select", variant="primary", id="btn-select", disabled=True),
                 Button("Cancel", id="btn-cancel"),
             )
 
@@ -417,6 +417,7 @@ class DirectoryModal(ModalScreen):
         self, event: DirectoryTree.DirectorySelected
     ) -> None:
         self._selected = event.path
+        self.query_one("#btn-select", Button).disabled = False
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "btn-select":
@@ -461,6 +462,7 @@ class PresetSelectModal(ModalScreen):
     def __init__(self, preset_names: list[str]) -> None:
         super().__init__()
         self._names = preset_names
+        self._id_to_name: dict[str, str] = {f"preset-{i}": name for i, name in enumerate(preset_names)}
 
     def compose(self) -> ComposeResult:
         with Container(classes="modal-container"):
@@ -473,8 +475,7 @@ class PresetSelectModal(ModalScreen):
 
     def on_list_view_selected(self, event: ListView.Selected) -> None:
         item_id = event.item.id or ""
-        idx = int(item_id.split("-")[1])
-        self.dismiss(self._names[idx])
+        self.dismiss(self._id_to_name.get(item_id))
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         self.dismiss(None)
