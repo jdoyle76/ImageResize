@@ -919,14 +919,79 @@ class ProcessingScreen(Screen):
 class SummaryScreen(Screen):
     """Step 3 — shows results after batch completes."""
 
+    BINDINGS = [
+        Binding("e", "toggle_errors", "Toggle errors"),
+        Binding("q", "quit", "Quit"),
+    ]
+
     def __init__(self, result: "ProcessResult") -> None:
         super().__init__()
         self._result = result
 
     def compose(self) -> ComposeResult:
+        r = self._result
+        status = "Cancelled" if r.cancelled else "Complete"
+
         yield Header(show_clock=True)
-        yield Label("Summary Screen — coming in next task", id="placeholder")
+        with Container(id="summary-screen"):
+            yield Label(status, classes="section-title", id="summary-status")
+
+            # Stats
+            with Container(id="stats-block"):
+                yield Horizontal(
+                    Label("Processed successfully:", classes="stat-label"),
+                    Label(str(r.processed), classes="stat-value"),
+                    classes="stat-row",
+                )
+                yield Horizontal(
+                    Label("Skipped (non-image):", classes="stat-label"),
+                    Label(str(r.skipped), classes="stat-value"),
+                    classes="stat-row",
+                )
+                yield Horizontal(
+                    Label("Renamed (collision):", classes="stat-label"),
+                    Label(str(r.renamed), classes="stat-value"),
+                    classes="stat-row",
+                )
+                yield Horizontal(
+                    Label("Failed:", classes="stat-label"),
+                    Label(str(r.failed), classes="stat-value"),
+                    classes="stat-row",
+                )
+
+            # Error log (only shown if there are errors)
+            if r.errors:
+                err_title = f"{len(r.errors)} error{'s' if len(r.errors) != 1 else ''}"
+                with Collapsible(title=err_title, collapsed=True, id="error-log"):
+                    for filename, reason in r.errors:
+                        yield Label(f"[bold]{filename}[/bold]: {reason}")
+
+            # Buttons
+            with Horizontal(id="summary-buttons"):
+                yield Button(
+                    "Process Another Batch",
+                    variant="primary",
+                    id="btn-another",
+                )
+                yield Button("Quit", id="btn-quit")
+
         yield Footer()
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "btn-another":
+            self.app.switch_screen(SetupScreen())
+        elif event.button.id == "btn-quit":
+            self.app.exit()
+
+    def action_toggle_errors(self) -> None:
+        try:
+            log = self.query_one("#error-log", Collapsible)
+            log.collapsed = not log.collapsed
+        except Exception:
+            pass
+
+    def action_quit(self) -> None:
+        self.app.exit()
 
 
 # ──────────────────────────────────────────────
