@@ -303,6 +303,8 @@ class ImageProcessor:
         return img
 
     def _apply_max(self, img: Image.Image, params: ResolutionParams) -> Image.Image:
+        if params.size is None:
+            return img
         w, h = img.size
         s = params.size
         by = params.by
@@ -322,6 +324,8 @@ class ImageProcessor:
         return img.resize(new_size, Image.Resampling.LANCZOS)
 
     def _apply_percentage(self, img: Image.Image, params: ResolutionParams) -> Image.Image:
+        if params.percent is None:
+            return img
         ratio = params.percent / 100.0
         new_size = (max(1, int(img.width * ratio)), max(1, int(img.height * ratio)))
         return img.resize(new_size, Image.Resampling.LANCZOS)
