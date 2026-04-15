@@ -394,7 +394,93 @@ class ImageProcessor:
 # TUI — Modals
 # ──────────────────────────────────────────────
 
-# DirectoryModal, PresetNameModal, PresetSelectModal go here
+class DirectoryModal(ModalScreen):
+    """Browse the filesystem and return the chosen directory path."""
+
+    BINDINGS = [Binding("escape", "dismiss_none", "Cancel")]
+
+    def __init__(self, start_path: str = "") -> None:
+        super().__init__()
+        self._start = Path(start_path).expanduser() if start_path else Path.home()
+        self._selected: Optional[Path] = None
+
+    def compose(self) -> ComposeResult:
+        with Container(classes="modal-container"):
+            yield Label("Select a directory (Enter to confirm, Esc to cancel)")
+            yield DirectoryTree(str(self._start), id="dir-tree")
+            yield Horizontal(
+                Button("Select", variant="primary", id="btn-select"),
+                Button("Cancel", id="btn-cancel"),
+            )
+
+    def on_directory_tree_directory_selected(
+        self, event: DirectoryTree.DirectorySelected
+    ) -> None:
+        self._selected = event.path
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "btn-select":
+            self.dismiss(self._selected)
+        else:
+            self.dismiss(None)
+
+    def action_dismiss_none(self) -> None:
+        self.dismiss(None)
+
+
+class PresetNameModal(ModalScreen):
+    """Prompt the user to enter a preset name."""
+
+    BINDINGS = [Binding("escape", "dismiss_none", "Cancel")]
+
+    def compose(self) -> ComposeResult:
+        with Container(classes="modal-container"):
+            yield Label("Enter a name for this preset:")
+            yield Input(placeholder="e.g. web, thumbnail, print", id="preset-name-input")
+            yield Horizontal(
+                Button("Save", variant="primary", id="btn-save"),
+                Button("Cancel", id="btn-cancel"),
+            )
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "btn-save":
+            name = self.query_one("#preset-name-input", Input).value.strip()
+            self.dismiss(name if name else None)
+        else:
+            self.dismiss(None)
+
+    def action_dismiss_none(self) -> None:
+        self.dismiss(None)
+
+
+class PresetSelectModal(ModalScreen):
+    """Show a list of saved presets and return the chosen name."""
+
+    BINDINGS = [Binding("escape", "dismiss_none", "Cancel")]
+
+    def __init__(self, preset_names: list[str]) -> None:
+        super().__init__()
+        self._names = preset_names
+
+    def compose(self) -> ComposeResult:
+        with Container(classes="modal-container"):
+            yield Label("Select a preset:")
+            yield ListView(
+                *[ListItem(Label(name), id=f"preset-{i}") for i, name in enumerate(self._names)],
+                id="preset-list",
+            )
+            yield Button("Cancel", id="btn-cancel")
+
+    def on_list_view_selected(self, event: ListView.Selected) -> None:
+        item_id = event.item.id or ""
+        idx = int(item_id.split("-")[1])
+        self.dismiss(self._names[idx])
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        self.dismiss(None)
+
+    def action_dismiss_none(self) -> None:
+        self.dismiss(None)
 
 # ──────────────────────────────────────────────
 # TUI — Screens
@@ -408,10 +494,89 @@ class SetupScreen(Screen):
         Binding("q", "quit", "Quit"),
     ]
 
+    def __init__(self) -> None:
+        super().__init__()
+        self._settings = SettingsManager()
+        self._settings.load()
+        self._last = self._settings.get_last_used()
+        self._source_dir: str = self._last.get("source_dir", "")
+        self._target_dir: str = self._last.get("target_dir", "")
+
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
-        yield Label("Setup Screen — coming in next task", id="placeholder")
+        with ScrollableContainer(id="setup-screen"):
+            # ── Directories ──────────────────────────
+            yield Label("Directories", classes="section-title")
+            yield Horizontal(
+                Label("Source: ", classes="dir-label"),
+                Input(
+                    value=self._source_dir,
+                    placeholder="Press Enter to browse…",
+                    id="source-input",
+                    classes="dir-field",
+                ),
+                Button("Browse", id="btn-browse-source"),
+                classes="dir-row",
+            )
+            yield Horizontal(
+                Label("Target: ", classes="dir-label"),
+                Input(
+                    value=self._target_dir,
+                    placeholder="Press Enter to browse…",
+                    id="target-input",
+                    classes="dir-field",
+                ),
+                Button("Browse", id="btn-browse-target"),
+                classes="dir-row",
+            )
+
+            # ── Resolution (placeholder — Task 8) ────
+            yield Label("Resolution Mode", classes="section-title")
+            yield Label("(resolution controls go here)", id="resolution-placeholder")
+
+            # ── Quality (placeholder — Task 9) ───────
+            yield Label("Quality", classes="section-title")
+            yield Label("(quality slider goes here)", id="quality-placeholder")
+
+            # ── Presets (placeholder — Task 9) ───────
+            yield Label("Presets", classes="section-title")
+            yield Label("(preset controls go here)", id="preset-placeholder")
+
         yield Footer()
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "btn-browse-source":
+            self.app.push_screen(
+                DirectoryModal(self._source_dir),
+                callback=self._on_source_selected,
+            )
+        elif event.button.id == "btn-browse-target":
+            self.app.push_screen(
+                DirectoryModal(self._target_dir),
+                callback=self._on_target_selected,
+            )
+
+    def _on_source_selected(self, path: Optional[Path]) -> None:
+        if path is not None:
+            self._source_dir = str(path)
+            self.query_one("#source-input", Input).value = self._source_dir
+
+    def _on_target_selected(self, path: Optional[Path]) -> None:
+        if path is not None:
+            self._target_dir = str(path)
+            self.query_one("#target-input", Input).value = self._target_dir
+
+    def on_input_submitted(self, event: Input.Submitted) -> None:
+        if event.input.id == "source-input":
+            self.app.push_screen(
+                DirectoryModal(event.value),
+                callback=self._on_source_selected,
+            )
+        elif event.input.id == "target-input":
+            self.app.push_screen(
+                DirectoryModal(event.value),
+                callback=self._on_target_selected,
+            )
 
     def action_run(self) -> None:
         self.app.push_screen("processing")
