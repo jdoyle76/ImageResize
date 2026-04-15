@@ -885,10 +885,13 @@ class ProcessingScreen(Screen):
             self.post_message(BatchError(f"Permission denied: {exc}"))
         except FileNotFoundError as exc:
             self.post_message(BatchError(f"Directory not found: {exc}"))
+        except Exception as exc:
+            self.post_message(BatchError(f"Unexpected error: {exc}"))
 
     def on_progress_update(self, event: ProgressUpdate) -> None:
         bar = self.query_one("#progress-bar", ProgressBar)
-        bar.total = max(event.total, 1)
+        if bar.total != event.total and event.total > 0:
+            bar.total = event.total
         bar.progress = event.done
         self.query_one("#current-file", Label).update(
             f"Processing: {event.current_file}" if event.current_file else "Finishing…"
