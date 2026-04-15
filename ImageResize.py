@@ -254,18 +254,18 @@ class ImageProcessor:
                 with Image.open(source_file) as img:
                     fmt = img.format or source_file.suffix.lstrip(".").upper()
                     img.load()
-                    out_img = self.apply_resolution(img.copy(), resolution_params)
+                    out_img = self.apply_resolution(img, resolution_params)
 
-                out_path = self._get_output_path(source_file, source_dir, target_dir)
-                out_path.parent.mkdir(parents=True, exist_ok=True)
+                    out_path = self._get_output_path(source_file, source_dir, target_dir)
+                    out_path.parent.mkdir(parents=True, exist_ok=True)
 
-                if out_path.exists():
-                    out_path = self._resolve_collision(out_path)
-                    result.renamed += 1
+                    if out_path.exists():
+                        out_path = self._resolve_collision(out_path)
+                        result.renamed += 1
 
-                quality_kwargs = self.map_quality(quality, fmt)
-                out_img.save(out_path, format=fmt, **quality_kwargs)
-                result.processed += 1
+                    quality_kwargs = self.map_quality(quality, fmt)
+                    out_img.save(out_path, format=fmt, **quality_kwargs)
+                    result.processed += 1
 
             except UnidentifiedImageError:
                 result.skipped += 1
