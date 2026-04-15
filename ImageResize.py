@@ -38,6 +38,118 @@ from textual.widgets import (
 )
 from textual.worker import Worker, get_current_worker
 
+APP_CSS = """
+Screen {
+    background: $surface;
+}
+
+#setup-screen {
+    padding: 1 2;
+}
+
+.section-title {
+    text-style: bold;
+    color: $accent;
+    margin-top: 1;
+}
+
+.dir-field {
+    margin-bottom: 1;
+}
+
+#resolution-inputs {
+    margin-top: 1;
+    padding: 0 2;
+}
+
+#quality-row {
+    height: 3;
+    align: left middle;
+}
+
+#quality-label {
+    width: 30;
+}
+
+#preset-row {
+    margin-top: 1;
+    height: 3;
+    align: left middle;
+}
+
+#processing-screen {
+    align: center middle;
+    padding: 2 4;
+}
+
+#progress-bar {
+    width: 80%;
+}
+
+#current-file {
+    margin-top: 1;
+    color: $text-muted;
+}
+
+#file-counter {
+    margin-top: 1;
+}
+
+#summary-screen {
+    align: center middle;
+    padding: 2 4;
+}
+
+.stat-row {
+    height: 2;
+}
+
+.stat-label {
+    width: 30;
+}
+
+.stat-value {
+    text-style: bold;
+}
+
+#error-log {
+    margin-top: 1;
+    max-height: 10;
+}
+
+#summary-buttons {
+    margin-top: 2;
+    height: 3;
+    align: center middle;
+}
+
+DirectoryTree {
+    width: 60;
+    height: 20;
+}
+
+.modal-container {
+    background: $surface;
+    border: thick $accent;
+    padding: 1 2;
+    width: 70;
+    height: auto;
+}
+
+#inputs-fixed, #inputs-max, #inputs-pct, #inputs-preset {
+    display: none;
+    margin-top: 1;
+}
+
+#inputs-max {
+    display: block;
+}
+
+.num-input {
+    width: 10;
+}
+"""
+
 # ──────────────────────────────────────────────
 # Settings
 # ──────────────────────────────────────────────
@@ -288,13 +400,59 @@ class ImageProcessor:
 # TUI — Screens
 # ──────────────────────────────────────────────
 
-# SetupScreen, ProcessingScreen, SummaryScreen go here
+class SetupScreen(Screen):
+    """Step 1 — configure source, target, resolution, quality, presets."""
+
+    BINDINGS = [
+        Binding("r", "run", "Run"),
+        Binding("q", "quit", "Quit"),
+    ]
+
+    def compose(self) -> ComposeResult:
+        yield Header(show_clock=True)
+        yield Label("Setup Screen — coming in next task", id="placeholder")
+        yield Footer()
+
+    def action_run(self) -> None:
+        self.app.push_screen("processing")
+
+    def action_quit(self) -> None:
+        self.app.exit()
+
+
+class ProcessingScreen(Screen):
+    """Step 2 — shows progress while batch runs."""
+
+    def compose(self) -> ComposeResult:
+        yield Header(show_clock=True)
+        yield Label("Processing Screen — coming in next task", id="placeholder")
+        yield Footer()
+
+
+class SummaryScreen(Screen):
+    """Step 3 — shows results after batch completes."""
+
+    def compose(self) -> ComposeResult:
+        yield Header(show_clock=True)
+        yield Label("Summary Screen — coming in next task", id="placeholder")
+        yield Footer()
+
 
 # ──────────────────────────────────────────────
 # App
 # ──────────────────────────────────────────────
 
-# ImageResizeApp goes here
+class ImageResizeApp(App):
+    CSS = APP_CSS
+    TITLE = "ImageResize"
+    SCREENS = {
+        "setup": SetupScreen,
+        "processing": ProcessingScreen,
+        "summary": SummaryScreen,
+    }
+
+    def on_mount(self) -> None:
+        self.push_screen("setup")
 
 # ──────────────────────────────────────────────
 # Entry point
