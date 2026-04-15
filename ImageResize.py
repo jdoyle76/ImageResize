@@ -36,6 +36,7 @@ from textual.widgets import (
     RadioSet,
     Static,
 )
+from textual.message import Message
 from textual.worker import Worker, get_current_worker
 
 APP_CSS = """
@@ -484,6 +485,52 @@ class PresetSelectModal(ModalScreen):
         self.dismiss(None)
 
 # ──────────────────────────────────────────────
+# TUI — Messages
+# ──────────────────────────────────────────────
+
+class ProgressUpdate(Message):
+    def __init__(self, done: int, total: int, current_file: str) -> None:
+        super().__init__()
+        self.done = done
+        self.total = total
+        self.current_file = current_file
+
+
+class BatchComplete(Message):
+    def __init__(self, result: "ProcessResult") -> None:
+        super().__init__()
+        self.result = result
+
+
+class BatchError(Message):
+    def __init__(self, message: str) -> None:
+        super().__init__()
+        self.message = message
+
+
+class _ErrorModal(ModalScreen):
+    """Display an unrecoverable error and return to Setup."""
+
+    BINDINGS = [Binding("escape", "dismiss_none", "Close")]
+
+    def __init__(self, message: str) -> None:
+        super().__init__()
+        self._message = message
+
+    def compose(self) -> ComposeResult:
+        with Container(classes="modal-container"):
+            yield Label("Error", classes="section-title")
+            yield Label(self._message)
+            yield Button("Return to Setup", variant="primary", id="btn-ok")
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        self.dismiss(None)
+
+    def action_dismiss_none(self) -> None:
+        self.dismiss(None)
+
+
+# ──────────────────────────────────────────────
 # TUI — Screens
 # ──────────────────────────────────────────────
 
@@ -639,7 +686,31 @@ class SetupScreen(Screen):
             )
 
     def action_run(self) -> None:
-        self.app.push_screen("processing")
+        source = self.query_one("#source-input", Input).value.strip()
+        target = self.query_one("#target-input", Input).value.strip()
+
+        if not source or not Path(source).is_dir():
+            self.notify("Please select a valid source directory.", title="Error", severity="error")
+            return
+        if not target:
+            self.notify("Please select a target directory.", title="Error", severity="error")
+            return
+
+        quality = self._safe_int("#quality-input", 85)
+        params = self.get_resolution_params()
+
+        # Save last-used
+        self._settings.set_last_used({
+            "source_dir": source,
+            "target_dir": target,
+            "resolution_mode": params.mode,
+            "resolution_params": params.to_dict(),
+            "quality": quality,
+        })
+
+        self.app.switch_screen(
+            ProcessingScreen(source, target, params, quality)
+        )
 
     def action_quit(self) -> None:
         self.app.exit()
@@ -760,14 +831,94 @@ class SetupScreen(Screen):
 class ProcessingScreen(Screen):
     """Step 2 — shows progress while batch runs."""
 
+    def __init__(
+        self,
+        source_dir: str,
+        target_dir: str,
+        resolution_params: "ResolutionParams",
+        quality: int,
+    ) -> None:
+        super().__init__()
+        self._source_dir = Path(source_dir)
+        self._target_dir = Path(target_dir)
+        self._resolution_params = resolution_params
+        self._quality = quality
+        self._processor = ImageProcessor()
+
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
-        yield Label("Processing Screen — coming in next task", id="placeholder")
+        with Container(id="processing-screen"):
+            yield Label(
+                f"{self._source_dir} → {self._target_dir}",
+                id="processing-header",
+            )
+            yield ProgressBar(total=100, show_eta=False, id="progress-bar")
+            yield Label("Starting…", id="current-file")
+            yield Label("0 / 0 files", id="file-counter")
+            yield Button("Cancel", variant="error", id="btn-cancel")
         yield Footer()
+
+    def on_mount(self) -> None:
+        self.run_worker(self._run_batch, exclusive=True, thread=True)
+
+    def _run_batch(self) -> None:
+        worker = get_current_worker()
+        try:
+            if not self._target_dir.exists():
+                self._target_dir.mkdir(parents=True)
+
+            def on_progress(done: int, total: int, name: str) -> None:
+                if worker.is_cancelled:
+                    self._processor.cancel()
+                    return
+                self.post_message(ProgressUpdate(done, total, name))
+
+            result = self._processor.process_batch(
+                self._source_dir,
+                self._target_dir,
+                self._resolution_params,
+                self._quality,
+                progress_callback=on_progress,
+            )
+            self.post_message(BatchComplete(result))
+        except PermissionError as exc:
+            self.post_message(BatchError(f"Permission denied: {exc}"))
+        except FileNotFoundError as exc:
+            self.post_message(BatchError(f"Directory not found: {exc}"))
+
+    def on_progress_update(self, event: ProgressUpdate) -> None:
+        bar = self.query_one("#progress-bar", ProgressBar)
+        bar.total = max(event.total, 1)
+        bar.progress = event.done
+        self.query_one("#current-file", Label).update(
+            f"Processing: {event.current_file}" if event.current_file else "Finishing…"
+        )
+        self.query_one("#file-counter", Label).update(
+            f"{event.done} / {event.total} files"
+        )
+
+    def on_batch_complete(self, event: BatchComplete) -> None:
+        self.app.switch_screen(SummaryScreen(event.result))
+
+    def on_batch_error(self, event: BatchError) -> None:
+        self.app.push_screen(
+            _ErrorModal(event.message),
+            callback=lambda _: self.app.switch_screen(SetupScreen()),
+        )
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "btn-cancel":
+            self._processor.cancel()
+            self.query_one("#btn-cancel", Button).disabled = True
+            self.query_one("#current-file", Label).update("Cancelling…")
 
 
 class SummaryScreen(Screen):
     """Step 3 — shows results after batch completes."""
+
+    def __init__(self, result: "ProcessResult") -> None:
+        super().__init__()
+        self._result = result
 
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
@@ -782,14 +933,9 @@ class SummaryScreen(Screen):
 class ImageResizeApp(App):
     CSS = APP_CSS
     TITLE = "ImageResize"
-    SCREENS = {
-        "setup": SetupScreen,
-        "processing": ProcessingScreen,
-        "summary": SummaryScreen,
-    }
 
     def on_mount(self) -> None:
-        self.push_screen("setup")
+        self.push_screen(SetupScreen())
 
 # ──────────────────────────────────────────────
 # Entry point
