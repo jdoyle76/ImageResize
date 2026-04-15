@@ -509,6 +509,34 @@ class BatchError(Message):
         self.message = message
 
 
+class _HelpModal(ModalScreen):
+    """Show keyboard shortcuts."""
+
+    BINDINGS = [
+        Binding("escape", "dismiss_none", "Close"),
+        Binding("?", "dismiss_none", "Close"),
+    ]
+
+    def compose(self) -> ComposeResult:
+        with Container(classes="modal-container"):
+            yield Label("Keyboard Shortcuts", classes="section-title")
+            yield Static(
+                "  R       Run batch processing\n"
+                "  Q       Quit\n"
+                "  Tab     Next field\n"
+                "  Enter   Browse directory (when in dir field)\n"
+                "  ?       Show this help\n"
+                "  Esc     Close modal / cancel"
+            )
+            yield Button("Close", variant="primary", id="btn-close")
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        self.dismiss(None)
+
+    def action_dismiss_none(self) -> None:
+        self.dismiss(None)
+
+
 class _ErrorModal(ModalScreen):
     """Display an unrecoverable error and return to Setup."""
 
@@ -541,6 +569,7 @@ class SetupScreen(Screen):
     BINDINGS = [
         Binding("r", "run", "Run"),
         Binding("q", "quit", "Quit"),
+        Binding("?", "help", "Help"),
     ]
 
     def __init__(self) -> None:
@@ -715,6 +744,9 @@ class SetupScreen(Screen):
 
     def action_quit(self) -> None:
         self.app.exit()
+
+    def action_help(self) -> None:
+        self.app.push_screen(_HelpModal())
 
     def on_radio_set_changed(self, event: RadioSet.Changed) -> None:
         if event.radio_set.id != "resolution-mode":
