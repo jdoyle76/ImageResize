@@ -531,9 +531,41 @@ class SetupScreen(Screen):
                 classes="dir-row",
             )
 
-            # ── Resolution (placeholder — Task 8) ────
+            # ── Resolution Mode ──────────────────────
             yield Label("Resolution Mode", classes="section-title")
-            yield Label("(resolution controls go here)", id="resolution-placeholder")
+            with RadioSet(id="resolution-mode"):
+                yield RadioButton("Fixed Dimensions", id="mode-fixed")
+                yield RadioButton("Max Width or Height", id="mode-max", value=True)
+                yield RadioButton("Percentage Scale", id="mode-pct")
+                yield RadioButton("Named Preset", id="mode-preset")
+
+            # Fixed inputs
+            with Horizontal(id="inputs-fixed"):
+                yield Input(value="1920", placeholder="Width", id="fixed-width", classes="num-input")
+                yield Label(" × ")
+                yield Input(value="1080", placeholder="Height", id="fixed-height", classes="num-input")
+                with RadioSet(id="fixed-fit"):
+                    yield RadioButton("Stretch", id="fit-stretch")
+                    yield RadioButton("Letterbox", id="fit-letterbox", value=True)
+                    yield RadioButton("Crop", id="fit-crop")
+
+            # Max inputs
+            with Horizontal(id="inputs-max"):
+                yield Input(value="1280", placeholder="Max px", id="max-size", classes="num-input")
+                with RadioSet(id="max-by"):
+                    yield RadioButton("By Width", id="by-width")
+                    yield RadioButton("By Height", id="by-height")
+                    yield RadioButton("By Either", id="by-either", value=True)
+
+            # Percentage inputs
+            with Horizontal(id="inputs-pct"):
+                yield Input(value="100", placeholder="Percent", id="pct-value", classes="num-input")
+                yield Label("%")
+
+            # Preset inputs
+            with Horizontal(id="inputs-preset"):
+                yield Label("Preset: ")
+                yield Input(placeholder="Load a preset first", id="preset-display", disabled=True)
 
             # ── Quality (placeholder — Task 9) ───────
             yield Label("Quality", classes="section-title")
@@ -584,6 +616,62 @@ class SetupScreen(Screen):
 
     def action_quit(self) -> None:
         self.app.exit()
+
+    def on_radio_set_changed(self, event: RadioSet.Changed) -> None:
+        if event.radio_set.id != "resolution-mode":
+            return
+        mode_map = {
+            "mode-fixed": "inputs-fixed",
+            "mode-max": "inputs-max",
+            "mode-pct": "inputs-pct",
+            "mode-preset": "inputs-preset",
+        }
+        selected_id = event.pressed.id
+        for btn_id, panel_id in mode_map.items():
+            panel = self.query_one(f"#{panel_id}")
+            panel.display = (btn_id == selected_id)
+
+    def _safe_int(self, widget_id: str, default: int) -> int:
+        try:
+            return int(self.query_one(widget_id, Input).value)
+        except (ValueError, TypeError):
+            return default
+
+    def _safe_float(self, widget_id: str, default: float) -> float:
+        try:
+            return float(self.query_one(widget_id, Input).value)
+        except (ValueError, TypeError):
+            return default
+
+    def get_resolution_params(self) -> ResolutionParams:
+        mode_radio = self.query_one("#resolution-mode", RadioSet)
+        selected = mode_radio.pressed_button
+        mode_id = selected.id if selected else "mode-max"
+
+        if mode_id == "mode-fixed":
+            width = self._safe_int("#fixed-width", 1920)
+            height = self._safe_int("#fixed-height", 1080)
+            fit_radio = self.query_one("#fixed-fit", RadioSet)
+            fit_btn = fit_radio.pressed_button
+            fit = (fit_btn.id or "fit-letterbox").replace("fit-", "") if fit_btn else "letterbox"
+            return ResolutionParams(mode="fixed", width=width, height=height, fit=fit)
+
+        if mode_id == "mode-max":
+            size = self._safe_int("#max-size", 1280)
+            by_radio = self.query_one("#max-by", RadioSet)
+            by_btn = by_radio.pressed_button
+            by = (by_btn.id or "by-either").replace("by-", "") if by_btn else "either"
+            return ResolutionParams(mode="max", size=size, by=by)
+
+        if mode_id == "mode-pct":
+            pct = self._safe_float("#pct-value", 100.0)
+            return ResolutionParams(mode="percentage", percent=pct)
+
+        # mode-preset: use stored params from loaded preset
+        stored = getattr(self, "_preset_params", None)
+        if stored:
+            return ResolutionParams.from_dict(stored)
+        return ResolutionParams(mode="max", size=1280, by="either")
 
 
 class ProcessingScreen(Screen):
