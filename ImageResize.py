@@ -36,6 +36,7 @@ from textual.widgets import (
     RadioSet,
     Static,
 )
+from textual.css.query import NoMatches
 from textual.message import Message
 from textual.worker import Worker, get_current_worker
 
@@ -981,13 +982,13 @@ class SummaryScreen(Screen):
         if event.button.id == "btn-another":
             self.app.switch_screen(SetupScreen())
         elif event.button.id == "btn-quit":
-            self.app.exit()
+            self.action_quit()
 
     def action_toggle_errors(self) -> None:
         try:
             log = self.query_one("#error-log", Collapsible)
             log.collapsed = not log.collapsed
-        except Exception:
+        except NoMatches:
             pass
 
     def action_quit(self) -> None:
