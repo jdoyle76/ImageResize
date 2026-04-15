@@ -210,6 +210,74 @@ class ImageProcessor:
         new_size = (max(1, int(img.width * ratio)), max(1, int(img.height * ratio)))
         return img.resize(new_size, Image.LANCZOS)
 
+    def _get_output_path(
+        self, source_file: Path, source_root: Path, target_root: Path
+    ) -> Path:
+        rel = source_file.relative_to(source_root)
+        return target_root / rel
+
+    def _resolve_collision(self, path: Path) -> Path:
+        if not path.exists():
+            return path
+        stem, suffix, parent = path.stem, path.suffix, path.parent
+        i = 1
+        while True:
+            candidate = parent / f"{stem}_{i}{suffix}"
+            if not candidate.exists():
+                return candidate
+            i += 1
+
+    def process_batch(
+        self,
+        source_dir: Path,
+        target_dir: Path,
+        resolution_params: ResolutionParams,
+        quality: int,
+        progress_callback: Optional[Callable[[int, int, str], None]] = None,
+    ) -> ProcessResult:
+        self._cancel_event.clear()
+        result = ProcessResult()
+
+        all_files = [f for f in source_dir.rglob("*") if f.is_file()]
+        total = len(all_files)
+
+        for i, source_file in enumerate(all_files):
+            if self._cancel_event.is_set():
+                result.cancelled = True
+                break
+
+            rel_name = str(source_file.relative_to(source_dir))
+            if progress_callback:
+                progress_callback(i, total, rel_name)
+
+            try:
+                with Image.open(source_file) as img:
+                    fmt = img.format or source_file.suffix.lstrip(".").upper()
+                    img.load()
+                    out_img = self.apply_resolution(img.copy(), resolution_params)
+
+                out_path = self._get_output_path(source_file, source_dir, target_dir)
+                out_path.parent.mkdir(parents=True, exist_ok=True)
+
+                if out_path.exists():
+                    out_path = self._resolve_collision(out_path)
+                    result.renamed += 1
+
+                quality_kwargs = self.map_quality(quality, fmt)
+                out_img.save(out_path, format=fmt, **quality_kwargs)
+                result.processed += 1
+
+            except UnidentifiedImageError:
+                result.skipped += 1
+            except Exception as exc:
+                result.failed += 1
+                result.errors.append((rel_name, str(exc)))
+
+        if progress_callback and not result.cancelled:
+            progress_callback(total, total, "")
+
+        return result
+
 # ──────────────────────────────────────────────
 # TUI — Modals
 # ──────────────────────────────────────────────

@@ -141,3 +141,132 @@ def test_percentage_200_doubles_dimensions(proc):
     params = ResolutionParams(mode="percentage", percent=200.0)
     result = proc.apply_resolution(img, params)
     assert result.size == (800, 600)
+
+
+# ── Output path and collision ──────────────────────────────────────────────
+
+from pathlib import Path
+
+
+def test_get_output_path_mirrors_structure(proc, tmp_path):
+    source_root = tmp_path / "src"
+    target_root = tmp_path / "out"
+    source_file = source_root / "vacation" / "beach.jpg"
+    result = proc._get_output_path(source_file, source_root, target_root)
+    assert result == target_root / "vacation" / "beach.jpg"
+
+
+def test_resolve_collision_no_conflict(proc, tmp_path):
+    path = tmp_path / "photo.jpg"
+    result = proc._resolve_collision(path)
+    assert result == path
+
+
+def test_resolve_collision_one_existing(proc, tmp_path):
+    path = tmp_path / "photo.jpg"
+    path.touch()
+    result = proc._resolve_collision(path)
+    assert result == tmp_path / "photo_1.jpg"
+
+
+def test_resolve_collision_multiple_existing(proc, tmp_path):
+    for name in ("photo.jpg", "photo_1.jpg", "photo_2.jpg"):
+        (tmp_path / name).touch()
+    result = proc._resolve_collision(tmp_path / "photo.jpg")
+    assert result == tmp_path / "photo_3.jpg"
+
+
+# ── Batch processing ───────────────────────────────────────────────────────
+
+def make_test_image_file(path: Path, size=(100, 100)) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    img = PILImage.new("RGB", size, "blue")
+    img.save(path)
+
+
+def test_batch_processes_jpeg_images(proc, tmp_path):
+    src = tmp_path / "src"
+    dst = tmp_path / "dst"
+    make_test_image_file(src / "a.jpg")
+    make_test_image_file(src / "b.jpg")
+
+    params = ResolutionParams(mode="percentage", percent=50.0)
+    result = proc.process_batch(src, dst, params, quality=80)
+
+    assert result.processed == 2
+    assert result.skipped == 0
+    assert result.failed == 0
+
+
+def test_batch_skips_non_images(proc, tmp_path):
+    src = tmp_path / "src"
+    dst = tmp_path / "dst"
+    src.mkdir()
+    make_test_image_file(src / "real.jpg")
+    (src / "readme.txt").write_text("not an image")
+
+    params = ResolutionParams(mode="percentage", percent=100.0)
+    result = proc.process_batch(src, dst, params, quality=80)
+
+    assert result.processed == 1
+    assert result.skipped == 1
+
+
+def test_batch_preserves_directory_structure(proc, tmp_path):
+    src = tmp_path / "src"
+    dst = tmp_path / "dst"
+    make_test_image_file(src / "sub" / "deep.jpg")
+
+    params = ResolutionParams(mode="percentage", percent=100.0)
+    proc.process_batch(src, dst, params, quality=80)
+
+    assert (dst / "sub" / "deep.jpg").exists()
+
+
+def test_batch_renames_on_collision(proc, tmp_path):
+    src = tmp_path / "src"
+    dst = tmp_path / "dst"
+    make_test_image_file(src / "photo.jpg")
+    # Pre-create a collision in dst
+    dst.mkdir(parents=True)
+    make_test_image_file(dst / "photo.jpg")
+
+    params = ResolutionParams(mode="percentage", percent=100.0)
+    result = proc.process_batch(src, dst, params, quality=80)
+
+    assert result.renamed == 1
+    assert (dst / "photo_1.jpg").exists()
+
+
+def test_batch_cancel_stops_processing(proc, tmp_path):
+    src = tmp_path / "src"
+    dst = tmp_path / "dst"
+    for i in range(10):
+        make_test_image_file(src / f"img{i}.jpg")
+
+    progress_calls = []
+
+    def on_progress(done, total, name):
+        progress_calls.append(done)
+        if done == 1:
+            proc.cancel()
+
+    params = ResolutionParams(mode="percentage", percent=100.0)
+    result = proc.process_batch(src, dst, params, quality=80, progress_callback=on_progress)
+
+    assert result.cancelled is True
+    assert result.processed < 10
+
+
+def test_batch_calls_progress_callback(proc, tmp_path):
+    src = tmp_path / "src"
+    dst = tmp_path / "dst"
+    make_test_image_file(src / "a.jpg")
+    make_test_image_file(src / "b.jpg")
+
+    calls = []
+    params = ResolutionParams(mode="percentage", percent=100.0)
+    proc.process_batch(src, dst, params, quality=80, progress_callback=lambda d, t, n: calls.append((d, t, n)))
+
+    assert len(calls) > 0
+    assert calls[-1][0] == calls[-1][1]  # final call: done == total
