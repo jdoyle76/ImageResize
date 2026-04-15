@@ -280,6 +280,8 @@ class ImageProcessor:
         return img
 
     def _apply_fixed(self, img: Image.Image, params: ResolutionParams) -> Image.Image:
+        if params.width is None or params.height is None:
+            return img
         target = (params.width, params.height)
         if params.fit == "stretch":
             return img.resize(target, Image.Resampling.LANCZOS)
