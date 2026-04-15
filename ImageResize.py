@@ -502,6 +502,7 @@ class SetupScreen(Screen):
         self._last = self._settings.get_last_used()
         self._source_dir: str = self._last.get("source_dir", "")
         self._target_dir: str = self._last.get("target_dir", "")
+        self._preset_params: Optional[dict] = None
 
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
