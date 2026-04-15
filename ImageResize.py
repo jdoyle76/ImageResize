@@ -156,6 +156,59 @@ class ImageProcessor:
             return {"quality": max(1, min(100, quality_pct))}
         return {}
 
+    def apply_resolution(self, img: Image.Image, params: ResolutionParams) -> Image.Image:
+        if params.mode == "fixed":
+            return self._apply_fixed(img, params)
+        if params.mode == "max":
+            return self._apply_max(img, params)
+        if params.mode == "percentage":
+            return self._apply_percentage(img, params)
+        return img
+
+    def _apply_fixed(self, img: Image.Image, params: ResolutionParams) -> Image.Image:
+        target = (params.width, params.height)
+        if params.fit == "stretch":
+            return img.resize(target, Image.LANCZOS)
+        if params.fit == "letterbox":
+            img = img.copy()
+            img.thumbnail(target, Image.LANCZOS)
+            result = Image.new("RGB", target, (0, 0, 0))
+            offset = ((target[0] - img.width) // 2, (target[1] - img.height) // 2)
+            result.paste(img, offset)
+            return result
+        if params.fit == "crop":
+            ratio = max(target[0] / img.width, target[1] / img.height)
+            new_size = (int(img.width * ratio), int(img.height * ratio))
+            img = img.resize(new_size, Image.LANCZOS)
+            left = (img.width - target[0]) // 2
+            top = (img.height - target[1]) // 2
+            return img.crop((left, top, left + target[0], top + target[1]))
+        return img
+
+    def _apply_max(self, img: Image.Image, params: ResolutionParams) -> Image.Image:
+        w, h = img.size
+        s = params.size
+        by = params.by
+        if by == "width":
+            if w <= s:
+                return img
+            ratio = s / w
+        elif by == "height":
+            if h <= s:
+                return img
+            ratio = s / h
+        else:  # "either"
+            if w <= s and h <= s:
+                return img
+            ratio = min(s / w, s / h)
+        new_size = (max(1, int(w * ratio)), max(1, int(h * ratio)))
+        return img.resize(new_size, Image.LANCZOS)
+
+    def _apply_percentage(self, img: Image.Image, params: ResolutionParams) -> Image.Image:
+        ratio = params.percent / 100.0
+        new_size = (max(1, int(img.width * ratio)), max(1, int(img.height * ratio)))
+        return img.resize(new_size, Image.LANCZOS)
+
 # ──────────────────────────────────────────────
 # TUI — Modals
 # ──────────────────────────────────────────────
