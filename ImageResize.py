@@ -282,10 +282,10 @@ class ImageProcessor:
     def _apply_fixed(self, img: Image.Image, params: ResolutionParams) -> Image.Image:
         target = (params.width, params.height)
         if params.fit == "stretch":
-            return img.resize(target, Image.LANCZOS)
+            return img.resize(target, Image.Resampling.LANCZOS)
         if params.fit == "letterbox":
             img = img.copy()
-            img.thumbnail(target, Image.LANCZOS)
+            img.thumbnail(target, Image.Resampling.LANCZOS)
             fill = (0,) * len(img.getbands())
             result = Image.new(img.mode, target, fill)
             offset = ((target[0] - img.width) // 2, (target[1] - img.height) // 2)
@@ -294,7 +294,7 @@ class ImageProcessor:
         if params.fit == "crop":
             ratio = max(target[0] / img.width, target[1] / img.height)
             new_size = (int(img.width * ratio), int(img.height * ratio))
-            img = img.resize(new_size, Image.LANCZOS)
+            img = img.resize(new_size, Image.Resampling.LANCZOS)
             left = (img.width - target[0]) // 2
             top = (img.height - target[1]) // 2
             return img.crop((left, top, left + target[0], top + target[1]))
@@ -317,12 +317,12 @@ class ImageProcessor:
                 return img
             ratio = min(s / w, s / h)
         new_size = (max(1, int(w * ratio)), max(1, int(h * ratio)))
-        return img.resize(new_size, Image.LANCZOS)
+        return img.resize(new_size, Image.Resampling.LANCZOS)
 
     def _apply_percentage(self, img: Image.Image, params: ResolutionParams) -> Image.Image:
         ratio = params.percent / 100.0
         new_size = (max(1, int(img.width * ratio)), max(1, int(img.height * ratio)))
-        return img.resize(new_size, Image.LANCZOS)
+        return img.resize(new_size, Image.Resampling.LANCZOS)
 
     def _get_output_path(
         self, source_file: Path, source_root: Path, target_root: Path
