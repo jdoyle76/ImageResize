@@ -688,8 +688,16 @@ class SetupScreen(Screen):
         if mode == "fixed":
             self.query_one("#fixed-width", Input).value = str(params.get("width", 1920))
             self.query_one("#fixed-height", Input).value = str(params.get("height", 1080))
+            # Restore fit sub-param
+            fit = params.get("fit", "letterbox")
+            fit_btn_id = {"stretch": "fit-stretch", "letterbox": "fit-letterbox", "crop": "fit-crop"}.get(fit, "fit-letterbox")
+            self.query_one(f"#{fit_btn_id}", RadioButton).value = True
         elif mode == "max":
             self.query_one("#max-size", Input).value = str(params.get("size", 1280))
+            # Restore by sub-param
+            by = params.get("by", "either")
+            by_btn_id = {"width": "by-width", "height": "by-height", "either": "by-either"}.get(by, "by-either")
+            self.query_one(f"#{by_btn_id}", RadioButton).value = True
         elif mode == "percentage":
             self.query_one("#pct-value", Input).value = str(params.get("percent", 100))
 
@@ -697,9 +705,10 @@ class SetupScreen(Screen):
         if not name:
             return
         quality = self._safe_int("#quality-input", 85)
+        params = self.get_resolution_params()
         settings = {
-            "resolution_mode": self.get_resolution_params().mode,
-            "resolution_params": self.get_resolution_params().to_dict(),
+            "resolution_mode": params.mode,
+            "resolution_params": params.to_dict(),
             "quality": quality,
         }
         self._settings.save_preset(name, settings)
