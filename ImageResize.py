@@ -6,6 +6,7 @@
 # ──────────────────────────────────────────────
 from __future__ import annotations
 
+import copy
 import json
 import threading
 from dataclasses import dataclass, field
@@ -62,16 +63,16 @@ class SettingsManager:
         self._data: dict = {}
 
     def load(self) -> dict:
+        self._data = copy.deepcopy(_DEFAULT_SETTINGS)
         try:
             if self.settings_path.exists():
                 with open(self.settings_path) as f:
-                    self._data = json.load(f)
-            else:
-                import copy
-                self._data = copy.deepcopy(_DEFAULT_SETTINGS)
+                    loaded = json.load(f)
+                # Merge top-level keys from file over defaults
+                for key, value in loaded.items():
+                    self._data[key] = value
         except (json.JSONDecodeError, OSError):
-            import copy
-            self._data = copy.deepcopy(_DEFAULT_SETTINGS)
+            pass  # _data already set to defaults above
         return self._data
 
     def save(self) -> None:
@@ -82,7 +83,6 @@ class SettingsManager:
         tmp.replace(self.settings_path)
 
     def get_last_used(self) -> dict:
-        import copy
         return copy.deepcopy(self._data.get("last_used", _DEFAULT_SETTINGS["last_used"]))
 
     def set_last_used(self, settings: dict) -> None:
@@ -90,7 +90,7 @@ class SettingsManager:
         self.save()
 
     def get_presets(self) -> dict:
-        return self._data.get("presets", {})
+        return copy.deepcopy(self._data.get("presets", {}))
 
     def save_preset(self, name: str, settings: dict) -> None:
         self._data.setdefault("presets", {})[name] = settings
