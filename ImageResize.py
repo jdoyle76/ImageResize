@@ -172,7 +172,8 @@ class ImageProcessor:
         if params.fit == "letterbox":
             img = img.copy()
             img.thumbnail(target, Image.LANCZOS)
-            result = Image.new("RGB", target, (0, 0, 0))
+            fill = (0,) * len(img.getbands())
+            result = Image.new(img.mode, target, fill)
             offset = ((target[0] - img.width) // 2, (target[1] - img.height) // 2)
             result.paste(img, offset)
             return result
